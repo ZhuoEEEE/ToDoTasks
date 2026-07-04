@@ -1,5 +1,4 @@
 local fields = { "Hdn", "Clr", "Cpd", "Ttl", "Tme", "Nte" }
-local title_wrap_units = 16
 local title_extra_height = 18
 local row_h = 64
 local row_s = 32
@@ -103,15 +102,24 @@ local function text_char(text, i)
 	return text:sub(i, i + 3), 2.35, i + 4
 end
 
-local function text_units(text)
-	local units = 0
-	local i = 1
-	while i <= #text do
-		local _, units_for_char, next_i = text_char(text, i)
-		units = units + units_for_char
-		i = next_i
+local function text_token(text, i)
+	local char, units_for_char, next_i = text_char(text, i)
+	if text:byte(i) < 128 and char:match("%w") then
+		while next_i <= #text do
+			local next_byte = text:byte(next_i)
+			if next_byte >= 128 then
+				break
+			end
+			local next_char, next_units, token_next_i = text_char(text, next_i)
+			if not next_char:match("%w") then
+				break
+			end
+			char = char .. next_char
+			units_for_char = units_for_char + next_units
+			next_i = token_next_i
+		end
 	end
-	return units
+	return char, units_for_char, next_i
 end
 
 local function wrap_lines(text, limit)
@@ -132,7 +140,7 @@ local function wrap_lines(text, limit)
 			line_units = 0
 			i = i + 1
 		else
-			local char, units_for_char, next_i = text_char(text, i)
+			local char, units_for_char, next_i = text_token(text, i)
 			if line ~= "" and line_units + units_for_char > limit then
 				table.insert(lines, line)
 				line = char
@@ -148,14 +156,6 @@ local function wrap_lines(text, limit)
 	return lines
 end
 
-local function title_limit()
-	local text_w = number_var("TextW", 80)
-	if text_w <= 0 or text_w > 256 then
-		text_w = 80
-	end
-	return title_wrap_units * text_w / 80
-end
-
 local function note_width()
 	local note_w = number_var("NoteW", -1)
 	if note_w <= 0 then
@@ -166,7 +166,8 @@ end
 
 local function note_limit()
 	local note_w = note_width()
-	if note_w <= 0 or note_w > 256 then
+	local max_note_w = number_var("PanelW", 320)
+	if note_w <= 0 or note_w > max_note_w then
 		note_w = 200
 	end
 	return note_wrap_units * note_w / 80
@@ -178,7 +179,6 @@ local function note_height(slot, limit)
 end
 
 local function sync_layout(requested_index)
-	title_wrap_units = tonumber(SKIN:GetVariable("TitleWrapUnits", title_wrap_units)) or title_wrap_units
 	title_extra_height = tonumber(SKIN:GetVariable("TitleExtraH", title_extra_height)) or title_extra_height
 	row_h = number_var("RowH", row_h)
 	row_s = number_var("RowS", row_s)
@@ -188,7 +188,6 @@ local function sync_layout(requested_index)
 	note_wrap_units = number_var("NoteWrapUnits", note_wrap_units)
 	note_max_lines = clamp(math.floor(number_var("NoteMaxLines", note_max_lines)), 1, note_max_meters)
 
-	local limit = title_limit()
 	local note_text_limit = note_limit()
 	local content_h = 0
 	local extras = {}
@@ -197,7 +196,7 @@ local function sync_layout(requested_index)
 
 	for slot = 0, 7 do
 		local extra = 0
-		if value(slot, "Hdn") ~= "1" and text_units(value(slot, "Ttl")) > limit then
+		if value(slot, "Hdn") ~= "1" then
 			extra = title_extra_height
 		end
 

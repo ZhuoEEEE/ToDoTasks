@@ -203,10 +203,17 @@ PW=5
 RowH=64
 RowS=32
 NoteH=28
-TitleExtraH=0
+NoteLineH=16
+NoteWrapUnits=13
+NoteMaxLines=16
+NoteX=40
+NoteRightPad=20
+TitleExtraH=18
+TitleTextH=36
 ListSlotH=(#RowH#+#TitleExtraH#)
 PanelW=(64*#PW#)
 TextW=(Max((#PanelW#-40-10-22-48-#TcMd#*(12+24+32)-8),80))
+NoteW=(64*#PW#-#NoteX#-#NoteRightPad#)
 PH=((#Quantity#*#ListSlotH#+64)/64)
 ```
 
@@ -216,8 +223,14 @@ PH=((#Quantity#*#ListSlotH#+64)/64)
 - `RowH=64`：每条任务基础高度。
 - `RowS=32`：滚动计算步长。
 - `NoteH=28`：备注抽屉基础高度。
+- `NoteLineH=16`：备注显示时的单行高度。
+- `NoteWrapUnits=13`：Lua 备注换行估算阈值，保持偏保守以避免 Rainmeter 单行省略。
+- `NoteRightPad=20`：备注右侧安全留白。
+- `TitleExtraH=18`：固定给标题预留第二行高度。
+- `TitleTextH=36`：标题 meter 的固定两行显示高度。
 - `PanelW`：所有主界面宽度计算的统一来源。
-- `TextW`：任务标题和备注可用文本宽度。
+- `TextW`：任务标题可用文本宽度。
+- `NoteW`：备注显示和备注输入框的可用宽度，当前略宽于标题区。
 
 主界面改造重点：
 
@@ -264,7 +277,7 @@ ScriptFile=#@#Scripts\ToDoList.lua
 
 - 当前滚动索引。
 - 当前任务数量。
-- 每条任务标题实际换行高度。
+- 每条可见任务固定预留两行标题高度。
 - 每条备注是否有内容。
 - 备注展开动画值。
 - 当前窗口可见范围。
@@ -273,8 +286,10 @@ ScriptFile=#@#Scripts\ToDoList.lua
 
 - `RowY0` 到 `RowY7`
 - `RowH.Actual0` 到 `RowH.Actual7`
-- `NteH0` 到 `NteH7`
-- `Nte.Wrap0` 到 `Nte.Wrap7`
+- `Ttl.Extra0` 到 `Ttl.Extra7`
+- `Nte.Y0` 到 `Nte.Y7`
+- `NteEdit.Y0` 到 `NteEdit.Y7`
+- `NoteH.Actual0` 到 `NoteH.Actual7`
 - `PageStart`
 - `PageEnd`
 
@@ -286,10 +301,12 @@ ScriptFile=#@#Scripts\ToDoList.lua
 
 相关函数：
 
-- `text_units(text)`：估算中英文混合文本宽度。
+- `text_char(text, i)`：按 UTF-8 字符估算单字符显示宽度。
+- `text_token(text, i)`：把连续英文数字作为整体 token，避免 `OpenCV`、`K230` 这类片段被从中间切开。
 - `wrap_lines(text, limit)`：按宽度限制换行。
+- `note_width()`：读取备注 meter 宽度；异常时按面板宽度兜底。
+- `note_limit()`：根据 `NoteW` 和 `NoteWrapUnits` 计算备注换行阈值。
 - `note_height(slot, limit)`：根据备注内容计算抽屉高度。
-- `note_limit()`：计算备注可用宽度。
 
 这种实现不是浏览器级排版，但能在 Rainmeter 的限制内避免备注溢出窗口。
 
@@ -449,7 +466,50 @@ PanelW=320
 - 给长标题和备注留出更合理的空间。
 - 让设置页标题、按钮和输入区域不拥挤。
 
-### 11.4 色彩策略
+### 11.4 任务数量调整预览
+
+任务数量调整界面位于：
+
+```text
+ToDoTasks\ToDoList\1..8\Resizing.ini
+```
+
+它复用通用样式：
+
+```text
+ToDoTasks\@Resources\Config\Style\Resizing.inc
+```
+
+ToDoList 的任务高度已经不是旧版固定 `64`，而是：
+
+```ini
+TitleExtraH=18
+ListSlotH=(#RowH#+#TitleExtraH#)
+```
+
+因此 `Resizing.ini` 的预览高度上限必须跟随 `ListSlotH`，当前使用：
+
+```ini
+Rsz.MusY=((64+#Quantity#*#ListSlotH#)*#sc#)
+Rsz.MaxH=((64+#Rsz.MaxQ#*#ListSlotH#)/64)
+Rsz.MinH=((64+#Rsz.MinQ#*#ListSlotH#)/64)
+Rsz.CalcQ.Sub=(64*#sc#)
+Rsz.CalcQ.Dvd=(#ListSlotH#*#sc#)
+Rsz.MinQ=1
+Rsz.MaxQ=8
+```
+
+按当前 `ListSlotH=82` 计算：
+
+```text
+6 个任务：64 + 6 * 82 = 556
+7 个任务：64 + 7 * 82 = 638
+8 个任务：64 + 8 * 82 = 720
+```
+
+这样预览框不会被旧的 `9 * 64 = 576` 高度裁剪，拖到 `6`、`7`、`8` 时高度应逐级增加。
+
+### 11.5 色彩策略
 
 当前视觉重点是工作型小工具，不做复杂装饰：
 
@@ -536,7 +596,7 @@ PageEnd
 - 背景透明度：`Op.Bg_Cstm=0.5`
 - 返回目标：`PrvConfig=CustomizableSize.ini`
 - 显示数量：`Quantity=3`
-- 任务槽：全部隐藏且清空
+- 任务槽：全部隐藏；标题和时间使用默认 `0`，备注为空
 - 备注字段：全部为空
 
 用户安装后产生的任务数据仍保存在 `SkinSettings` 目录中。更新版本前建议备份该目录。
@@ -571,10 +631,11 @@ PrvConfig=CustomizableSize.ini
 Quantity=3
 ```
 
-5. `EVENT___________0` 到 `EVENT___________7` 默认隐藏，标题、时间和备注为空。
+5. `EVENT___________0` 到 `EVENT___________7` 默认隐藏，标题和时间为默认 `0`，备注为空。
 6. 仓库中不要上传 `.git` 嵌套目录、临时备份、验证截图或运行时个人数据。
 7. GitHub 新建仓库时不要自动生成 README 或 license；本仓库已经提供 `README.md` 和 `LICENSE.md`。
-8. 如果制作 zip 发布包，压缩仓库根目录下的这几项内容，不要额外套一层本地工作目录名：
+8. `ToDoList\1..8\Resizing.ini` 中的 `Rsz.MinH` / `Rsz.MaxH` 应跟随 `ListSlotH` 动态计算，不应回到旧的固定 `2` / `9`。
+9. 如果制作 zip 发布包，压缩仓库根目录下的这几项内容，不要额外套一层本地工作目录名：
 
 ```text
 ToDoTasks
@@ -597,13 +658,15 @@ LICENSE.md
 8. 删除任务，确认下方任务补位且备注不串位。
 9. 打开设置页，调整不透明度。
 10. 修改数量和标题。
-11. 恢复默认并确认能返回主列表。
-12. 加载 `ToDoList\2` 到 `ToDoList\8` 任意实例，重复恢复默认返回测试。
+11. 使用右下角拖拉调整任务数量，确认 `6`、`7`、`8` 的预览高度逐级增加。
+12. 恢复默认并确认能返回主列表。
+13. 加载 `ToDoList\2` 到 `ToDoList\8` 任意实例，重复恢复默认返回测试。
 
 ## 17. 已知限制
 
 - 备注输入仍使用 Rainmeter `InputText`，不是完整多行编辑器。
 - 标题主行默认最多两行，超长内容通过 tooltip 查看。
+- 备注换行依赖 Lua 对 Rainmeter 字体宽度的估算，已保守处理中英文混排，但不是精确排版引擎。
 - 备注动画由 Rainmeter ActionTimer 和 Lua 变量模拟，不是浏览器 CSS 动画。
 - 许可继承原项目的 CC BY-NC-SA 4.0，不适合改成 MIT 等更宽松许可，除非获得原作者额外授权。
 - `Pk.Wbst` 当前按 `https://github.com/ZhuoEEEE/ToDoTasks` 填写，如果实际仓库名不同，发布前应修改。
@@ -613,7 +676,7 @@ LICENSE.md
 - 先改共享文件，再同步到 1 到 8 个实例入口。
 - 改任务数据字段时，必须同时更新添加、删除、清空、恢复默认、排序逻辑。
 - 改设置页时，优先检查 `SettingsSkin.inc` 和 `SkinSettings.inc` 的职责边界。
-- 改布局尺寸时，同时检查主界面、设置页和 Resizing 预览。
+- 改布局尺寸时，同时检查主界面、设置页和 Resizing 预览；如果 `ListSlotH` 改变，必须确认 `Rsz.MinH` / `Rsz.MaxH` 仍按当前行高计算。
 - 任何涉及用户数据的测试都应先备份 `SkinSettings\ToDoList\*.inc`。
 - 每完成一个稳定功能点，建议创建本地 git commit。
 
