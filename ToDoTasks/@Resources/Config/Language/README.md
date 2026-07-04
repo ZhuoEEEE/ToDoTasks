@@ -1,0 +1,1 @@
+﻿This guide has been moved to the Quanto Flx Wiki. If you are interested in contributing to the translation, please visit [the article on the Quanto Flx Wiki](https://github.com//stevehsudrawing/quantoflx/wiki/Guide-of-Translating-Quanto-Flx) for details.
