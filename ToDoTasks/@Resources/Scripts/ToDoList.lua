@@ -14,6 +14,31 @@ local function settings_path()
 	return SKIN:GetVariable("CURRENTSKINSETTINGS", "")
 end
 
+local function default_settings_path()
+	return SKIN:GetVariable("Pk@", "") .. "Config\\Default\\" .. SKIN:GetVariable("Sk.Nm", "") .. ".inc"
+end
+
+local function is_settings_skin()
+	return SKIN:GetVariable("Sk.Ty", "") == "SkinSettings"
+end
+
+local function copy_file(source, target)
+	local input = io.open(source, "rb")
+	if not input then
+		return false
+	end
+	local data = input:read("*all")
+	input:close()
+
+	local output = io.open(target, "wb")
+	if not output then
+		return false
+	end
+	output:write(data)
+	output:close()
+	return true
+end
+
 local function key(slot, field)
 	return string.format("EVENT___________%d.%s", slot, field)
 end
@@ -284,14 +309,42 @@ local function restore_note()
 end
 
 function Initialize()
+	if is_settings_skin() then
+		return
+	end
 	clean_literal_input_notes()
 	restore_note()
 	sync_layout()
 end
 
 function Update()
+	if is_settings_skin() then
+		return 0
+	end
 	sync_layout()
 	return 0
+end
+
+function RestoreDefaults()
+	local target = settings_path()
+	local source = default_settings_path()
+	local ok = target ~= "" and source ~= "" and copy_file(source, target)
+
+	if ok then
+		SKIN:Bang("!WriteKeyValue", "Variables", "Op.Bg_Cstm", "0.5", target)
+		SKIN:Bang("!WriteKeyValue", "Variables", "Quantity", "4", target)
+		SKIN:Bang("!WriteKeyValue", "Variables", "TaskAccentColor", "247,99,12", target)
+		SKIN:Bang("!SetOption", "Mt.ReDf.01.01", "Text", SKIN:GetVariable("Tm.Completed", "Completed"))
+		SKIN:Bang("!Update")
+		SKIN:Bang("!Redraw")
+		SKIN:Bang("!Delay", "600")
+		SKIN:Bang("!ActivateConfig", SKIN:GetVariable("CURRENTCONFIG", ""), "CustomizableSize.ini")
+		return
+	end
+
+	SKIN:Bang("!SetOption", "Mt.ReDf.01.01", "Text", "Restore failed")
+	SKIN:Bang("!Update")
+	SKIN:Bang("!Redraw")
 end
 
 function Scroll(delta)
